@@ -1,0 +1,302 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>랜덤 발표자 뽑기</title>
+<style>
+  :root {
+    --bg: #fdf8ef;
+    --card: #ffffff;
+    --ink: #1f2937;
+    --muted: #6b7280;
+    --line: #e5e1d8;
+    --accent: #2563eb;
+    --accent-ink: #ffffff;
+    --pick: #c2410c;
+    --done: #15803d;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Malgun Gothic", "Apple SD Gothic Neo", "Noto Sans KR", system-ui, sans-serif;
+    font-size: 18px;
+    line-height: 1.5;
+  }
+  main {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 20px 16px 40px;
+  }
+  h1 {
+    font-size: clamp(26px, 5vw, 40px);
+    margin: 0 0 16px;
+    text-align: center;
+  }
+  .card {
+    background: var(--card);
+    border: 2px solid var(--line);
+    border-radius: 16px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  label { font-weight: 700; display: block; margin-bottom: 8px; }
+  .hint { color: var(--muted); font-size: 15px; font-weight: 400; }
+  textarea {
+    width: 100%;
+    min-height: 130px;
+    font: inherit;
+    font-size: 20px;
+    padding: 12px;
+    border: 2px solid var(--line);
+    border-radius: 12px;
+    resize: vertical;
+  }
+  textarea:focus { outline: 3px solid var(--accent); outline-offset: 1px; }
+  .count-line { margin-top: 8px; color: var(--muted); font-size: 16px; }
+
+  .stage {
+    text-align: center;
+    padding: 24px 16px;
+  }
+  #result {
+    font-size: clamp(56px, 16vw, 160px);
+    font-weight: 800;
+    line-height: 1.15;
+    min-height: 1.2em;
+    color: var(--pick);
+    word-break: keep-all;
+    overflow-wrap: anywhere;
+  }
+  #result.placeholder { color: var(--muted); font-size: clamp(28px, 6vw, 48px); font-weight: 700; }
+  #result.finished { color: var(--done); font-size: clamp(30px, 7vw, 56px); }
+  #result.rolling { color: var(--muted); }
+  #result.pop { animation: pop .35s ease-out; }
+  @keyframes pop { from { transform: scale(.7); opacity: .3; } to { transform: scale(1); opacity: 1; } }
+
+  #remaining {
+    font-size: clamp(22px, 4.5vw, 34px);
+    font-weight: 700;
+    margin-top: 12px;
+  }
+
+  .buttons {
+    display: flex;
+    gap: 12px;
+    justify-content: center;
+    margin-top: 20px;
+    flex-wrap: wrap;
+  }
+  button {
+    font: inherit;
+    font-weight: 800;
+    border: none;
+    border-radius: 14px;
+    cursor: pointer;
+    min-height: 64px;
+    padding: 0 28px;
+    touch-action: manipulation;
+  }
+  #drawBtn {
+    background: var(--accent);
+    color: var(--accent-ink);
+    font-size: clamp(26px, 5vw, 36px);
+    flex: 1 1 220px;
+    max-width: 420px;
+  }
+  #resetBtn {
+    background: #e5e7eb;
+    color: var(--ink);
+    font-size: clamp(20px, 4vw, 26px);
+    flex: 0 1 160px;
+  }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button:focus-visible { outline: 4px solid #f59e0b; outline-offset: 2px; }
+
+  h2 { font-size: 20px; margin: 0 0 10px; }
+  #drawnList {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  #drawnList li {
+    background: #fff1e6;
+    border: 1px solid #fed7aa;
+    border-radius: 999px;
+    padding: 4px 14px;
+    font-size: 20px;
+  }
+  #drawnList li b { color: var(--pick); margin-right: 4px; }
+  .empty { color: var(--muted); }
+
+  @media (prefers-reduced-motion: reduce) {
+    #result.pop { animation: none; }
+  }
+</style>
+</head>
+<body>
+<main>
+  <h1>🎤 랜덤 발표자 뽑기</h1>
+
+  <section class="card">
+    <label for="names">학생 이름 <span class="hint">(쉼표 또는 줄바꿈으로 구분)</span></label>
+    <textarea id="names" placeholder="예) 김민준, 이서연, 박지호&#10;최하은" autocomplete="off" spellcheck="false"></textarea>
+    <div class="count-line" id="countLine">입력된 학생: 0명</div>
+  </section>
+
+  <section class="card stage" aria-live="polite">
+    <div id="result" class="placeholder">이름을 입력하고 뽑기를 눌러 주세요</div>
+    <div id="remaining">남은 인원: 0명</div>
+    <div class="buttons">
+      <button id="drawBtn" type="button">뽑기</button>
+      <button id="resetBtn" type="button">초기화</button>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>뽑힌 순서</h2>
+    <ol id="drawnList"><li class="empty" style="background:none;border:none;padding:0">아직 없어요</li></ol>
+  </section>
+</main>
+
+<script>
+  // 모든 데이터는 이 페이지 안 메모리에만 있습니다. (서버 전송·저장 없음)
+  const namesEl = document.getElementById('names');
+  const resultEl = document.getElementById('result');
+  const remainingEl = document.getElementById('remaining');
+  const countLineEl = document.getElementById('countLine');
+  const drawBtn = document.getElementById('drawBtn');
+  const resetBtn = document.getElementById('resetBtn');
+  const drawnListEl = document.getElementById('drawnList');
+
+  let drawn = [];        // 뽑힌 순서
+  let rolling = false;
+
+  function parseNames() {
+    const seen = new Set();
+    const list = [];
+    for (const raw of namesEl.value.split(/[,，、\n\r]+/)) {
+      const name = raw.trim().replace(/\s+/g, ' ');
+      if (name && !seen.has(name)) { seen.add(name); list.push(name); }
+    }
+    return list;
+  }
+
+  function remainingNames() {
+    const all = parseNames();
+    const taken = new Set(drawn);
+    return all.filter(n => !taken.has(n));
+  }
+
+  function randomIndex(n) {
+    const buf = new Uint32Array(1);
+    crypto.getRandomValues(buf);
+    return buf[0] % n;
+  }
+
+  function setResult(text, mode) {
+    resultEl.textContent = text;
+    resultEl.className = mode || '';
+  }
+
+  function renderList() {
+    drawnListEl.innerHTML = '';
+    if (drawn.length === 0) {
+      const li = document.createElement('li');
+      li.className = 'empty';
+      li.style.cssText = 'background:none;border:none;padding:0';
+      li.textContent = '아직 없어요';
+      drawnListEl.appendChild(li);
+      return;
+    }
+    drawn.forEach((name, i) => {
+      const li = document.createElement('li');
+      const b = document.createElement('b');
+      b.textContent = (i + 1) + '.';
+      li.appendChild(b);
+      li.appendChild(document.createTextNode(name));
+      drawnListEl.appendChild(li);
+    });
+  }
+
+  function update() {
+    const all = parseNames();
+    // 입력에서 지워진 이름은 뽑힌 목록에서도 정리
+    const allSet = new Set(all);
+    drawn = drawn.filter(n => allSet.has(n));
+    const left = remainingNames();
+
+    countLineEl.textContent = '입력된 학생: ' + all.length + '명 (중복·빈칸 제외)';
+    remainingEl.textContent = '남은 인원: ' + left.length + '명';
+    drawBtn.disabled = rolling || left.length === 0;
+    renderList();
+
+    if (rolling) return;
+    if (all.length === 0) {
+      setResult('이름을 입력하고 뽑기를 눌러 주세요', 'placeholder');
+    } else if (left.length === 0) {
+      setResult('🎉 모두 발표했어요! 초기화를 누르면 다시 뽑을 수 있어요.', 'finished');
+    } else if (drawn.length === 0) {
+      setResult('준비 완료! 뽑기를 눌러 주세요', 'placeholder');
+    }
+  }
+
+  function draw() {
+    const left = remainingNames();
+    if (rolling || left.length === 0) return;
+    const pick = left[randomIndex(left.length)];
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+    const finish = () => {
+      rolling = false;
+      drawn.push(pick);
+      setResult(pick, '');
+      void resultEl.offsetWidth;
+      resultEl.classList.add('pop');
+      update();
+      if (remainingNames().length === 0) {
+        // 마지막 이름은 그대로 크게 보여 주고, 아래에 안내 문구 표시
+        setResult(pick, 'pop');
+        remainingEl.textContent = '🎉 모두 뽑았어요! 다시 하려면 초기화를 눌러 주세요.';
+      }
+    };
+
+    if (reduce || left.length === 1) { finish(); return; }
+
+    rolling = true;
+    update();
+    let ticks = 0;
+    const total = 14;
+    const spin = () => {
+      setResult(left[randomIndex(left.length)], 'rolling');
+      ticks++;
+      if (ticks < total) setTimeout(spin, 40 + ticks * 8);
+      else finish();
+    };
+    spin();
+  }
+
+  function reset() {
+    if (rolling) return;
+    drawn = [];
+    update();
+  }
+
+  drawBtn.addEventListener('click', draw);
+  resetBtn.addEventListener('click', reset);
+  namesEl.addEventListener('input', update);
+  // 이름 입력칸 밖에서 스페이스/엔터로도 뽑기 가능
+  document.addEventListener('keydown', e => {
+    if (e.target === namesEl || e.target.tagName === 'BUTTON') return;
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); draw(); }
+  });
+
+  update();
+</script>
+</body>
+</html>
